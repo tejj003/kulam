@@ -1,13 +1,14 @@
 // Configuration & globals
 const CONFIG = {
-    particleInitial: 500,
-    maxParticles: 1000,
+    particleInitial: 1200,     // increased for fuller screen
+    maxParticles: 2500,        // allow higher ceiling
     flowFieldResolution: 20,
     motionThreshold: 30,
     motionSampleStep: 5,
-    enableTrails: false,      // Set to false for a clean black background (no lingering traces)
-    trailFadeStrength: 35,    // Lower = longer trails (only used if enableTrails = true)
-    useAdditiveGlow: false    // Disable additive to avoid bright residue build-up
+    enableTrails: true,        // turn trails back on for richness
+    trailFadeStrength: 18,     // gentle fade (higher = faster clear)
+    useAdditiveGlow: true,     // glowing accumulation
+    ambientSpawnRate: 4        // passive particles per frame when no motion
 };
 
 let video;
@@ -43,12 +44,17 @@ function setup() {
 }
 
 function draw() {
-    // Background handling: either hard clear or gentle fade for trails
+    // Rich background layering
     if (CONFIG.enableTrails) {
-        // In HSB mode: hue 0, saturation 0, brightness 0 (black) with alpha fade
-        background(0, 0, 0, CONFIG.trailFadeStrength);
+        // Instead of hard background(), draw translucent rect for smoother persistence
+        push();
+        noStroke();
+        // Slight radial darkening could be added later; for now uniform fade
+        fill(0, 0, 0, CONFIG.trailFadeStrength); // HSB black with alpha
+        rect(0, 0, width, height);
+        pop();
     } else {
-        background(0, 0, 0); // full clear, no traces
+        background(0, 0, 0);
     }
 
     time += 0.01;
@@ -59,14 +65,22 @@ function draw() {
     particles.forEach(p => { p.follow(flowField); p.update(); p.edges(); p.show(); });
     if (CONFIG.useAdditiveGlow) blendMode(BLEND);
 
+    // Motion-driven spawning (bursts)
     if (motion.active) {
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 10; i++) { // more per burst
             const x = map(motion.x, 0, video.width, 0, width);
             const y = map(motion.y, 0, video.height, 0, height);
-            particles.push(new Particle(x, y, true));
+            particles.push(new Particle(x + random(-40,40), y + random(-40,40), true));
         }
-        if (particles.length > CONFIG.maxParticles) particles.splice(0, particles.length - CONFIG.maxParticles);
+    } else {
+        // Ambient filling so display never feels empty
+        for (let i = 0; i < CONFIG.ambientSpawnRate; i++) {
+            particles.push(new Particle(random(width), random(height), false));
+        }
     }
+
+    // Trim overflow
+    if (particles.length > CONFIG.maxParticles) particles.splice(0, particles.length - CONFIG.maxParticles);
 
     if (frameCount % 3600 === 0) generateColorPalette();
 
@@ -74,7 +88,7 @@ function draw() {
         for (let i = 0; i < colorPalette.length; i++) {
             const c = colorPalette[i];
             const h = (hue(c) + 1) % 360;
-            const s = min(100, saturation(c));
+            const s = saturation(c);
             const b = brightness(c);
             colorPalette[i] = color(h, s, b, alpha(c));
         }
