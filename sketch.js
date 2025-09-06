@@ -20,6 +20,9 @@ let colorPalette = [];
 let time = 0;
 let flipVideoLogic = false; // Set to true if motion feels horizontally reversed.
 
+let MODE = 0; // 0=Flow Lines,1=Orbs,2=Ribbons,3=Starfield,4=PulseWeb
+const MODE_NAMES = ['Flow','Orbs','Ribbons','Starfield','PulseWeb'];
+
 function setup() {
     createCanvas(windowWidth, windowHeight);
 
@@ -182,6 +185,15 @@ function generateColorPalette() {
     }
 }
 
+function cycleMode() {
+    MODE = (MODE + 1) % MODE_NAMES.length;
+    const btn = document.getElementById('modeBtn');
+    if (btn) btn.textContent = 'Mode: ' + MODE_NAMES[MODE];
+    particles = [];
+    for (let i = 0; i < CONFIG.particleInitial; i++) particles.push(new Particle());
+}
+
+// Rebuild Particle class (was truncated by previous edit)
 class Particle {
     constructor(x, y, isNew = false) {
         this.pos = createVector(x ?? random(width), y ?? random(height));
@@ -193,16 +205,36 @@ class Particle {
         this.size = isNew ? random(10, 20) : random(2, 8);
         this.lifespan = 255;
         this.isNew = isNew;
+        this.phase = random(TWO_PI);
     }
     follow(vectors) {
-        const x = floor(this.pos.x / CONFIG.flowFieldResolution);
-        const y = floor(this.pos.y / CONFIG.flowFieldResolution);
-        const index = x + y * cols;
-        const force = vectors[index];
-        if (force) this.applyForce(force);
+        if (MODE === 0 || MODE === 2 || MODE === 4) {
+            const x = floor(this.pos.x / CONFIG.flowFieldResolution);
+            const y = floor(this.pos.y / CONFIG.flowFieldResolution);
+            const index = x + y * cols;
+            const force = vectors[index];
+            if (force) this.applyForce(force);
+        } else if (MODE === 3) { // starfield drift
+            const center = createVector(width/2, height/2);
+            const dir = p5.Vector.sub(center, this.pos).setMag(0.002);
+            this.applyForce(dir);
+        }
     }
     applyForce(force) { this.acc.add(force); }
     update() {
+        if (MODE === 1) {
+            const n = noise(this.pos.x*0.002, this.pos.y*0.002, time);
+            this.acc.add(p5.Vector.fromAngle(n*TWO_PI).mult(0.05));
+        } else if (MODE === 2) {
+            this.maxspeed = 5;
+        } else if (MODE === 3) {
+            const center = createVector(width/2, height/2);
+            const outward = p5.Vector.sub(this.pos, center).setMag(0.01);
+            this.acc.add(outward);
+        } else if (MODE === 4) {
+            const offset = p5.Vector.fromAngle(this.phase + time*2).mult(0.5);
+            this.acc.add(offset);
+        }
         this.vel.add(this.acc).limit(this.maxspeed);
         this.pos.add(this.vel);
         this.acc.mult(0);
@@ -217,14 +249,34 @@ class Particle {
     show() {
         push();
         colorMode(HSB, 360, 100, 100, 255);
-        const alphaVal = this.isNew ? this.lifespan : 200; // stronger visibility
+        const alphaVal = this.isNew ? this.lifespan : (MODE === 3 ? 180 : 200);
         this.color.setAlpha(alphaVal);
         stroke(this.color);
-        strokeWeight(this.size);
-        line(this.pos.x, this.pos.y, this.prevPos.x, this.prevPos.y);
+        if (MODE === 0) {
+            strokeWeight(this.size);
+            line(this.pos.x, this.pos.y, this.prevPos.x, this.prevPos.y);
+        } else if (MODE === 1) {
+            noStroke();
+            fill(this.color);
+            circle(this.pos.x, this.pos.y, this.size * 2);
+        } else if (MODE === 2) {
+            strokeWeight(this.size * 1.2);
+            line(this.pos.x, this.pos.y, this.prevPos.x, this.prevPos.y);
+        } else if (MODE === 3) {
+            strokeWeight(this.size * 0.6);
+            point(this.pos.x, this.pos.y);
+        } else if (MODE === 4) {
+            strokeWeight(this.size * 0.8);
+            line(this.pos.x, this.pos.y, this.prevPos.x, this.prevPos.y);
+            if (frameCount % 5 === 0) {
+                const other = particles[floor(random(particles.length))];
+                if (other) {
+                    stroke(this.color.levels[0], this.color.levels[1], this.color.levels[2], 60);
+                    line(this.pos.x, this.pos.y, other.pos.x, other.pos.y);
+                }
+            }
+        }
         this.prevPos = this.pos.copy();
         pop();
     }
 }
-
-function windowResized() { resizeCanvas(windowWidth, windowHeight); initFlowField(); }
